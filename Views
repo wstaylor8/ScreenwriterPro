@@ -1,0 +1,421 @@
+// ContentView.swift
+import SwiftUI
+
+struct ContentView: View {
+    @EnvironmentObject var viewModel: ScriptViewModel
+    @State private var showingNewProject = false
+    @State private var newTitle = ""
+    
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: Text("Screenplay Details")) {
+                    TextField("Title", text: $viewModel.screenplay.title)
+                        .onChange(of: viewModel.screenplay.title) { _ in
+                            viewModel.saveScreenplay()
+                        }
+                    
+                    TextField("Author", text: $viewModel.screenplay.author)
+                        .onChange(of: viewModel.screenplay.author) { _ in
+                            viewModel.saveScreenplay()
+                        }
+                    
+                    TextField("Contact", text: $viewModel.screenplay.contact)
+                        .onChange(of: viewModel.screenplay.contact) { _ in
+                            viewModel.saveScreenplay()
+                        }
+                }
+                
+                Section(header: Text("Scenes")) {
+                    if viewModel.screenplay.scenes.isEmpty {
+                        Text("No scenes yet. Tap '+' to add one.")
+                            .foregroundColor(.gray)
+                    }
+                    
+                    ForEach(viewModel.screenplay.scenes.indices, id: \.self) { index in
+                        NavigationLink(destination: ScriptEditorView(sceneIndex: index)) {
+                            VStack(alignment: .leading) {
+                                Text("Scene \(viewModel.screenplay.scenes[index].sceneNumber)")
+                                    .font(.headline)
+                                Text(viewModel.screenplay.scenes[index].heading)
+                                    .font(.subheadline)
+                                    .foregroundColor(.gray)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            viewModel.deleteScene(at: index)
+                        }
+                    }
+                }
+                
+                Section(header: Text("Tools")) {
+                    Toggle("Auto-format", isOn: $viewModel.autoFormatEnabled)
+                    
+                    Button(action: { viewModel.addScene() }) {
+                        Label("Add Scene", systemImage: "plus.circle")
+                    }
+                    
+                    NavigationLink(destination: ExportView()) {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+            .navigationTitle("ScreenWriting Pro")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    EditButton()
+                }
+            }
+        }
+    }
+}
+
+// ScriptEditorView.swift
+import SwiftUI
+
+struct ScriptEditorView: View {
+    @EnvironmentObject var viewModel: ScriptViewModel
+    @State var sceneIndex: Int
+    @State private var currentElementType: ScriptElementType = .action
+    @State private var elementText = ""
+    @FocusState private var isTextEditorFocused: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Scene heading editor
+            HStack {
+                Text("Scene \(viewModel.screenplay.scenes[sceneIndex].sceneNumber)")
+                    .font(.headline)
+                
+                TextField("Scene Heading", text: Binding(
+                    get: { viewModel.screenplay.scenes[sceneIndex].heading },
+                    set: { viewModel.updateSceneHeading(at: sceneIndex, heading: $0) }
+                ))
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .font(.headline)
+            }
+            .padding()
+            .background(Color(.systemGray6))
+            
+            // Elements list
+            ScrollViewReader { proxy in
+                List {
+                    ForEach(viewModel.screenplay.scenes[sceneIndex].elements.indices, id: \.self) { elementIndex in
+                        ElementRow(
+                            element: viewModel.screenplay.scenes[sceneIndex].elements[elementIndex],
+                            onUpdate: { newText in
+                                viewModel.updateElement(in: sceneIndex, elementIndex: elementIndex, text: newText)
+                            },
+                            onDelete: {
+                                viewModel.deleteElement(from: sceneIndex, at: elementIndex)
+                            }
+                        )
+                        .id(elementIndex)
+                    }
+                }
+            }
+            
+            // Input area
+            VStack(spacing: 8) {
+                // Element type selector
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(ScriptElementType.allCases, id: \.self) { type in
+                            Button(action: { 
+                                currentElementType = type
+                                if viewModel.autoFormatEnabled {
+                                    // Auto-add empty element of selected type
+                                    viewModel.addElement(to: sceneIndex, type: type)
+                                }
+                            }) {
+                                Text(type.rawValue)
+                                    .font(.caption)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(currentElementType == type ? Color.blue : Color(.systemGray5))
+                                    .foregroundColor(currentElementType == type ? .white : .primary)
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                
+                // Text input
+                HStack {
+                    TextField("Enter \(currentElementType.rawValue)...", text: $elementText)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .focused($isTextEditorFocused)
+                    
+                    Button(action: addElement) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.title2)
+                    }
+                    .disabled(elementText.isEmpty)
+                }
+                .padding(.horizontal)
+                .padding(.bottom)
+            }
+            .background(Color(.systemBackground))
+            .shadow(radius: 1)
+        }
+        .navigationTitle("Scene Editor")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    viewModel.addElement(to: sceneIndex, type: currentElementType)
+                }) {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+    }
+    
+    private func addElement() {
+        guard !elementText.isEmpty else { return }
+        
+        if viewModel.autoFormatEnabled {
+            if let detectedType = viewModel.autoFormatText(elementText) {
+                currentElementType = detectedType
+            }
+        }
+        
+        viewModel.addElement(to: sceneIndex, type: currentElementType, text: elementText)
+        elementText = ""
+        isTextEditorFocused = true
+    }
+}
+
+struct ElementRow: View {
+    let element: ScriptElement
+    let onUpdate: (String) -> Void
+    let onDelete: () -> Void
+    
+    @State private var isEditing = false
+    @State private var editedText: String
+    
+    init(element: ScriptElement, onUpdate: @escaping (String) -> Void, onDelete: @escaping () -> Void) {
+        self.element = element
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
+        _editedText = State(initialValue: element.text)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(element.type.rawValue)
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .fontWeight(.semibold)
+                
+                Spacer()
+                
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundColor(.red)
+                        .font(.caption)
+                }
+            }
+            
+            if isEditing {
+                TextField("Enter text", text: $editedText, onCommit: {
+                    onUpdate(editedText)
+                    isEditing = false
+                })
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            } else {
+                Text(formattedText)
+                    .font(.body)
+                    .onTapGesture {
+                        isEditing = true
+                    }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private var formattedText: String {
+        if element.type.formatting.allCaps {
+            return element.text.uppercased()
+        }
+        return element.text
+    }
+}
+
+// ExportView.swift
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct ExportView: View {
+    @EnvironmentObject var viewModel: ScriptViewModel
+    @State private var showingShareSheet = false
+    @State private var exportURL: URL?
+    @State private var exportType: ExportType = .txt
+    
+    enum ExportType: String, CaseIterable {
+        case txt = "Plain Text"
+        case fdx = "Final Draft XML"
+        case fountain = "Fountain"
+    }
+    
+    var body: some View {
+        List {
+            Section(header: Text("Preview")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(viewModel.screenplay.title)
+                        .font(.title)
+                        .fontWeight(.bold)
+                    
+                    if !viewModel.screenplay.author.isEmpty {
+                        Text("By \(viewModel.screenplay.author)")
+                            .font(.headline)
+                    }
+                    
+                    Text("Scenes: \(viewModel.screenplay.scenes.count)")
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
+                .padding(.vertical)
+            }
+            
+            Section(header: Text("Export Format")) {
+                Picker("Format", selection: $exportType) {
+                    ForEach(ExportType.allCases, id: \.self) { type in
+                        Text(type.rawValue).tag(type)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+            }
+            
+            Section(header: Text("Statistics")) {
+                StatRow(label: "Total Scenes", value: "\(viewModel.screenplay.scenes.count)")
+                StatRow(label: "Total Elements", value: "\(totalElements)")
+                StatRow(label: "Total Pages (est.)", value: "\(estimatedPages)")
+                StatRow(label: "Total Words", value: "\(totalWords)")
+            }
+            
+            Section {
+                Button(action: exportScript) {
+                    HStack {
+                        Spacer()
+                        Label("Export Screenplay", systemImage: "square.and.arrow.up")
+                            .font(.headline)
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .navigationTitle("Export")
+        .sheet(isPresented: $showingShareSheet) {
+            if let url = exportURL {
+                ShareSheet(activityItems: [url])
+            }
+        }
+    }
+    
+    private var totalElements: Int {
+        viewModel.screenplay.scenes.reduce(0) { $0 + $1.elements.count }
+    }
+    
+    private var estimatedPages: Int {
+        // Rough estimate: 1 page ≈ 55 lines of dialogue/action
+        let totalLines = totalElements * 2 // Each element ≈ 2 lines
+        return max(1, totalLines / 55)
+    }
+    
+    private var totalWords: Int {
+        var count = 0
+        for scene in viewModel.screenplay.scenes {
+            count += scene.heading.split(separator: " ").count
+            for element in scene.elements {
+                count += element.text.split(separator: " ").count
+            }
+        }
+        return count
+    }
+    
+    private func exportScript() {
+        switch exportType {
+        case .txt:
+            exportURL = viewModel.exportToPDF()
+        case .fdx:
+            exportURL = viewModel.exportToFDX()
+        case .fountain:
+            exportURL = exportToFountain()
+        }
+        
+        if exportURL != nil {
+            showingShareSheet = true
+        }
+    }
+    
+    private func exportToFountain() -> URL? {
+        var fountain = ""
+        
+        // Title page metadata
+        fountain += "Title: \(viewModel.screenplay.title)\n"
+        fountain += "Author: \(viewModel.screenplay.author)\n"
+        fountain += "Contact: \(viewModel.screenplay.contact)\n\n"
+        
+        for scene in viewModel.screenplay.scenes {
+            fountain += "\(scene.heading)\n\n"
+            
+            for element in scene.elements {
+                switch element.type {
+                case .character:
+                    fountain += "\n\(element.text.uppercased())\n"
+                case .dialogue:
+                    fountain += "\(element.text)\n\n"
+                case .parenthetical:
+                    fountain += "(\(element.text))\n"
+                case .transition:
+                    fountain += "> \(element.text.uppercased())\n\n"
+                default:
+                    fountain += "\(element.text)\n\n"
+                }
+            }
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("\(viewModel.screenplay.title).fountain")
+        
+        do {
+            try fountain.write(to: fileURL, atomically: true, encoding: .utf8)
+            return fileURL
+        } catch {
+            print("Failed to export Fountain: \(error)")
+            return nil
+        }
+    }
+}
+
+struct StatRow: View {
+    let label: String
+    let value: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(value)
+                .foregroundColor(.gray)
+                .fontWeight(.medium)
+        }
+    }
+}
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
