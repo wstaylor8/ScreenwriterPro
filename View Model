@@ -1,0 +1,112 @@
+// ScriptViewModel.swift
+import Foundation
+import SwiftUI
+
+class ScriptViewModel: ObservableObject {
+    @Published var screenplay: Screenplay
+    @Published var selectedSceneIndex: Int?
+    @Published var autoFormatEnabled = true
+    
+    private let saveKey = "currentScreenplay"
+    
+    init() {
+        // Load saved screenplay or create new one
+        if let data = UserDefaults.standard.data(forKey: saveKey),
+           let decoded = try? JSONDecoder().decode(Screenplay.self, from: data) {
+            self.screenplay = decoded
+        } else {
+            self.screenplay = Screenplay()
+        }
+    }
+    
+    func saveScreenplay() {
+        if let encoded = try? JSONEncoder().encode(screenplay) {
+            UserDefaults.standard.set(encoded, forKey: saveKey)
+        }
+    }
+    
+    func addScene() {
+        let sceneNumber = screenplay.scenes.count + 1
+        let newScene = Scene(sceneNumber: sceneNumber)
+        screenplay.scenes.append(newScene)
+        selectedSceneIndex = screenplay.scenes.count - 1
+        saveScreenplay()
+    }
+    
+    func deleteScene(at index: Int) {
+        screenplay.scenes.remove(at: index)
+        // Renumber scenes
+        for i in 0..<screenplay.scenes.count {
+            screenplay.scenes[i].sceneNumber = i + 1
+        }
+        saveScreenplay()
+    }
+    
+    func addElement(to sceneIndex: Int, type: ScriptElementType, text: String = "") {
+        let element = ScriptElement(type: type, text: text, sceneNumber: screenplay.scenes[sceneIndex].sceneNumber)
+        screenplay.scenes[sceneIndex].elements.append(element)
+        saveScreenplay()
+    }
+    
+    func updateElement(in sceneIndex: Int, elementIndex: Int, text: String) {
+        screenplay.scenes[sceneIndex].elements[elementIndex].text = text
+        saveScreenplay()
+    }
+    
+    func deleteElement(from sceneIndex: Int, at elementIndex: Int) {
+        screenplay.scenes[sceneIndex].elements.remove(at: elementIndex)
+        saveScreenplay()
+    }
+    
+    func updateSceneHeading(at index: Int, heading: String) {
+        screenplay.scenes[index].heading = heading
+        saveScreenplay()
+    }
+    
+    func autoFormatText(_ text: String) -> ScriptElementType? {
+        let upperText = text.uppercased()
+        
+        if upperText.hasPrefix("INT.") || upperText.hasPrefix("EXT.") || upperText.hasPrefix("INT/EXT") {
+            return .sceneHeading
+        } else if upperText == text && text.count < 50 && text.last != "." {
+            return .character
+        } else if text.hasPrefix("(") && text.hasSuffix(")") {
+            return .parenthetical
+        } else if ["FADE IN:", "FADE OUT.", "CUT TO:", "DISSOLVE TO:"].contains(upperText) {
+            return .transition
+        } else {
+            return .action
+        }
+    }
+    
+    func exportToPDF() -> URL? {
+        let formattedText = ScriptFormatter.formatScreenplay(screenplay)
+        
+        // Create a temporary file
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("\(screenplay.title).txt")
+        
+        do {
+            try formattedText.write(to: fileURL, atomically: true, encoding: .utf8)
+            return fileURL
+        } catch {
+            print("Failed to export: \(error)")
+            return nil
+        }
+    }
+    
+    func exportToFDX() -> URL? {
+        let fdxContent = ScriptFormatter.generateFDX(screenplay)
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("\(screenplay.title).fdx")
+        
+        do {
+            try fdxContent.write(to: fileURL, atomically: true, encoding: .utf8)
+            return fileURL
+        } catch {
+            print("Failed to export FDX: \(error)")
+            return nil
+        }
+    }
+}
