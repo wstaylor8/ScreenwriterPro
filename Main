@@ -1,0 +1,14 @@
+// ScreenWritingProApp.swift
+import SwiftUI
+
+@main
+struct ScreenWritingProApp: App {
+    @StateObject private var viewModel = ScriptViewModel()
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(viewModel)
+        }
+    }
+}
