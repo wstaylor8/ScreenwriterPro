@@ -1,0 +1,98 @@
+// ScriptFormatter.swift
+import Foundation
+
+class ScriptFormatter {
+    static func formatScreenplay(_ screenplay: Screenplay) -> String {
+        var formattedScript = ""
+        
+        // Title page
+        formattedScript += formatTitlePage(screenplay)
+        formattedScript += "\n\n"
+        
+        // Format each scene
+        for scene in screenplay.scenes {
+            formattedScript += formatScene(scene)
+            formattedScript += "\n\n"
+        }
+        
+        return formattedScript
+    }
+    
+    private static func formatTitlePage(_ screenplay: Screenplay) -> String {
+        var titlePage = ""
+        let formatter = DateFormatter()
+        formatter.dateStyle = .long
+        
+        // Center the title page (basic approximation)
+        titlePage += "\n\n\n\n"
+        titlePage += centerText(screenplay.title.uppercased())
+        titlePage += "\n\n"
+        titlePage += centerText("Written by")
+        titlePage += "\n\n"
+        titlePage += centerText(screenplay.author)
+        
+        if !screenplay.contact.isEmpty {
+            titlePage += "\n\n"
+            titlePage += centerText(screenplay.contact)
+        }
+        
+        titlePage += "\n\n"
+        titlePage += centerText(formatter.string(from: screenplay.draftDate))
+        
+        return titlePage
+    }
+    
+    private static func formatScene(_ scene: Scene) -> String {
+        var sceneText = ""
+        sceneText += "\(scene.sceneNumber).    \(scene.heading)\n"
+        
+        for element in scene.elements {
+            sceneText += formatElement(element)
+            sceneText += "\n"
+        }
+        
+        return sceneText
+    }
+    
+    private static func formatElement(_ element: ScriptElement) -> String {
+        let formatting = element.type.formatting
+        let indent = String(repeating: " ", count: Int(formatting.leftMargin * 10))
+        
+        if formatting.allCaps {
+            return indent + element.text.uppercased()
+        } else {
+            return indent + element.text
+        }
+    }
+    
+    private static func centerText(_ text: String) -> String {
+        let lineLength = 80
+        let padding = max(0, (lineLength - text.count) / 2)
+        return String(repeating: " ", count: padding) + text
+    }
+    
+    static func generateFDX(_ screenplay: Screenplay) -> String {
+        // Generate Final Draft XML format
+        var fdx = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        fdx += "<FinalDraft DocumentType=\"Script\" Template=\"No\" Version=\"5\">\n"
+        fdx += "  <Content>\n"
+        
+        for scene in screenplay.scenes {
+            fdx += "    <Paragraph Type=\"Scene Heading\">\n"
+            fdx += "      <SceneProperties Number=\"\(scene.sceneNumber)\"/>\n"
+            fdx += "      <Text>\(scene.heading)</Text>\n"
+            fdx += "    </Paragraph>\n"
+            
+            for element in scene.elements {
+                fdx += "    <Paragraph Type=\"\(element.type.rawValue)\">\n"
+                fdx += "      <Text>\(element.text)</Text>\n"
+                fdx += "    </Paragraph>\n"
+            }
+        }
+        
+        fdx += "  </Content>\n"
+        fdx += "</FinalDraft>"
+        
+        return fdx
+    }
+}
