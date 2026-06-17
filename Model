@@ -1,0 +1,94 @@
+// ScriptElement.swift
+import Foundation
+
+enum ScriptElementType: String, Codable, CaseIterable {
+    case sceneHeading = "Scene Heading"
+    case action = "Action"
+    case character = "Character"
+    case dialogue = "Dialogue"
+    case parenthetical = "Parenthetical"
+    case transition = "Transition"
+    case shot = "Shot"
+    
+    var formatting: ElementFormatting {
+        switch self {
+        case .sceneHeading:
+            return ElementFormatting(allCaps: true, leftMargin: 1.5, width: 6.0, topSpacing: 2.0)
+        case .action:
+            return ElementFormatting(allCaps: false, leftMargin: 1.5, width: 6.0, topSpacing: 1.0)
+        case .character:
+            return ElementFormatting(allCaps: true, leftMargin: 3.7, width: 3.5, topSpacing: 1.0)
+        case .dialogue:
+            return ElementFormatting(allCaps: false, leftMargin: 2.5, width: 5.5, topSpacing: 0.5)
+        case .parenthetical:
+            return ElementFormatting(allCaps: false, leftMargin: 3.0, width: 4.0, topSpacing: 0.5)
+        case .transition:
+            return ElementFormatting(allCaps: true, leftMargin: 5.5, width: 2.5, topSpacing: 1.0)
+        case .shot:
+            return ElementFormatting(allCaps: true, leftMargin: 1.5, width: 6.0, topSpacing: 1.0)
+        }
+    }
+}
+
+struct ElementFormatting: Codable {
+    let allCaps: Bool
+    let leftMargin: Double
+    let width: Double
+    let topSpacing: Double
+}
+
+struct ScriptElement: Identifiable, Codable {
+    let id: UUID
+    var type: ScriptElementType
+    var text: String
+    var sceneNumber: Int?
+    
+    init(type: ScriptElementType, text: String = "", sceneNumber: Int? = nil) {
+        self.id = UUID()
+        self.type = type
+        self.text = text
+        self.sceneNumber = sceneNumber
+    }
+}
+
+// Scene.swift
+import Foundation
+
+struct Scene: Identifiable, Codable {
+    let id: UUID
+    var sceneNumber: Int
+    var heading: String
+    var elements: [ScriptElement]
+    var notes: String
+    
+    init(sceneNumber: Int, heading: String = "INT. LOCATION - DAY", elements: [ScriptElement] = [], notes: String = "") {
+        self.id = UUID()
+        self.sceneNumber = sceneNumber
+        self.heading = heading
+        self.elements = elements
+        self.notes = notes
+    }
+}
+
+// Screenplay.swift
+import Foundation
+
+struct Screenplay: Identifiable, Codable {
+    let id: UUID
+    var title: String
+    var author: String
+    var contact: String
+    var draftDate: Date
+    var scenes: [Scene]
+    var notes: String
+    
+    init(title: String = "Untitled Screenplay", author: String = "", contact: String = "") {
+        self.id = UUID()
+        self.title = title
+        self.author = author
+        self.contact = contact
+        self.draftDate = Date()
+        self.scenes = []
+        self.notes = ""
+    }
+}
